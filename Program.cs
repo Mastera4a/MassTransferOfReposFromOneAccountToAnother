@@ -12,13 +12,13 @@ class Program
     {
         Console.Write("Введіть токен вихідного акаунту: ");
         string sourceToken = Console.ReadLine();
-
+        
         Console.Write("Введіть ім'я вихідного акаунту: ");
         string sourceUsername = Console.ReadLine();
 
         Console.Write("Введіть токен нового акаунту: ");
         string targetToken = Console.ReadLine();
-
+        
         Console.Write("Введіть ім'я нового акаунту: ");
         string targetUsername = Console.ReadLine();
 
@@ -27,28 +27,46 @@ class Program
 
     static async Task TransferRepositories(string sourceUsername, string sourceToken, string targetUsername, string targetToken)
     {
+        int page = 1;
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", sourceToken);
         client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0");
 
-        string url = $"https://api.github.com/users/{sourceUsername}/repos";
-        HttpResponseMessage response = await client.GetAsync(url);
-        response.EnsureSuccessStatusCode();
-
-        string responseBody = await response.Content.ReadAsStringAsync();
-        JsonDocument json = JsonDocument.Parse(responseBody);
-
-        foreach (JsonElement repo in json.RootElement.EnumerateArray())
+        while (true)
         {
-            string repoName = repo.GetProperty("name").GetString();
-            bool isPrivate = repo.GetProperty("private").GetBoolean();
+            string url = $"https://api.github.com/users/{sourceUsername}/repos?per_page=100&page={page}";
+            HttpResponseMessage response = await client.GetAsync(url);
 
-            Console.WriteLine($"🔄 Перенесення {repoName}...");
-
-            bool created = await CreateRepository(targetUsername, targetToken, repoName, isPrivate);
-            if (created)
+            if (!response.IsSuccessStatusCode)
             {
-                await TransferRepositoryContent(sourceUsername, sourceToken, targetUsername, targetToken, repoName);
+                Console.WriteLine($"❌ Ошибка при получении репозиториев: {response.StatusCode} - {await response.Content.ReadAsStringAsync()}");
+                return;
             }
+
+            string responseBody = await response.Content.ReadAsStringAsync();
+            JsonDocument json = JsonDocument.Parse(responseBody);
+            var repos = json.RootElement.EnumerateArray();
+
+            if (!repos.Any())
+            {
+                Console.WriteLine("✅ Все репозитории обработаны.");
+                break;
+            }
+
+            foreach (JsonElement repo in repos)
+            {
+                string repoName = repo.GetProperty("name").GetString();
+                bool isPrivate = repo.GetProperty("private").GetBoolean();
+
+                Console.WriteLine($"🔄 Перенос репозитория {repoName}...");
+
+                bool created = await CreateRepository(targetUsername, targetToken, repoName, isPrivate);
+                if (created)
+                {
+                    await TransferRepositoryContent(sourceUsername, sourceToken, targetUsername, targetToken, repoName);
+                }
+            }
+
+            page++;
         }
     }
 
