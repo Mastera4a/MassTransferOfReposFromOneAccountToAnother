@@ -172,17 +172,24 @@ class Program
     {
         if (!Directory.Exists(directoryPath)) return;
 
-        for (int i = 0; i < 5; i++)
+        for (int i = 0; i < 5; i++)  // До 5 спроб
         {
             try
             {
+                // Примусове завершення всіх Git-процесів перед видаленням
+                KillGitProcesses(directoryPath);
+
+                // Очікуємо 500 мс перед видаленням
+                await Task.Delay(500);
+
+                // Видалення каталогу
                 Directory.Delete(directoryPath, true);
                 Console.WriteLine($"✅ Каталог {directoryPath} успішно видалено.");
                 return;
             }
             catch (IOException)
             {
-                Console.WriteLine($"⚠️ Каталог {directoryPath} зайнятий. Повтор спроби...");
+                Console.WriteLine($"⚠️ Каталог {directoryPath} зайнятий. Повтор через 1 сек...");
                 await Task.Delay(1000);
             }
             catch (UnauthorizedAccessException)
@@ -193,5 +200,26 @@ class Program
         }
 
         Console.WriteLine($"❌ Не вдалося видалити каталог {directoryPath}.");
+    }
+
+    // Функція для завершення процесів Git
+    static void KillGitProcesses(string directoryPath)
+    {
+        try
+        {
+            var gitProcesses = Process.GetProcessesByName("git");
+            foreach (var process in gitProcesses)
+            {
+                if (process.MainModule.FileName.Contains(directoryPath))
+                {
+                    process.Kill();
+                    Console.WriteLine($"🔴 Завершено Git-процес {process.Id}, що блокував {directoryPath}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"⚠️ Помилка завершення процесів Git: {ex.Message}");
+        }
     }
 }
